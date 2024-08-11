@@ -32,7 +32,7 @@ def watermark(input_dir, output_dir):
 
 def main(args):
     dataset_dir = os.path.join(
-        "dataset_clean_sub", "Clean"
+        "dataset_clean", "Clean"
     )
     output_root = os.path.join(
         "dataset_processed", "SSL"

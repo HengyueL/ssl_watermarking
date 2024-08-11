@@ -16,6 +16,8 @@ import encode
 import evaluate
 import utils
 import utils_img
+import decode
+import pandas as pd
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -30,7 +32,7 @@ def get_parser():
     aa("--carrier_dir", type=str, default="carriers/", help="Directions of the latent space in which the watermark is embedded (Default: /carriers)")
     aa("--output_dir", type=str, default="output/", help="Output directory for logs and images (Default: /output)")
     aa("--save_images", type=utils.bool_inst, default=True, help="Whether to save watermarked images (Default: False)")
-    aa("--evaluate", type=utils.bool_inst, default=True, help="Whether to evaluate the detector (Default: True)")
+    aa("--evaluate", type=utils.bool_inst, default=False, help="Whether to evaluate the detector (Default: True)")
     aa("--decode_only", type=utils.bool_inst, default=False, help="To decode only watermarked images (Default: False)")
     aa("--verbose", type=int, default=1)
 
@@ -151,25 +153,34 @@ def main(params):
         imgs_out = [ToPILImage()(utils_img.unnormalize_img(pt_img).squeeze(0)) for pt_img in pt_imgs_out] 
         
         # Evaluate
-        if params.evaluate:
-            if params.verbose > 0:
-                print('>>> Evaluating watermarks...')
-            if not os.path.exists(params.output_dir):
-                os.makedirs(params.output_dir)
-            imgs_dir = os.path.join(params.output_dir, 'imgs')
-            if not os.path.exists(imgs_dir):
-                os.mkdir(imgs_dir)
-            df = evaluate.evaluate_multibit_on_attacks(imgs_out, carrier, model, msgs, params)
-            df_agg = evaluate.aggregate_df(df, params)
-            df_path = os.path.join(params.output_dir,'df.csv')
-            df_agg_path = os.path.join(params.output_dir,'df_agg.csv')
-            df.to_csv(df_path, index=False)
-            df_agg.to_csv(df_agg_path)
-            if params.verbose > 0:
-                print('Results saved in %s'%df_path)
+        # if params.evaluate:
+        #     if params.verbose > 0:
+        #         print('>>> Evaluating watermarks...')
+        #     if not os.path.exists(params.output_dir):
+        #         os.makedirs(params.output_dir)
+        #     imgs_dir = os.path.join(params.output_dir, 'imgs')
+        #     if not os.path.exists(imgs_dir):
+        #         os.mkdir(imgs_dir)
+        #     df = evaluate.evaluate_multibit_on_attacks(imgs_out, carrier, model, msgs, params)
+        #     df_agg = evaluate.aggregate_df(df, params)
+        #     df_path = os.path.join(params.output_dir,'df.csv')
+        #     df_agg_path = os.path.join(params.output_dir,'df_agg.csv')
+        #     df.to_csv(df_path, index=False)
+        #     df_agg.to_csv(df_agg_path)
+        #     if params.verbose > 0:
+        #         print('Results saved in %s'%df_path)
         
         # Save
+        # Init the dict to save watermarking summary
         if params.save_images:
+            save_csv_dir = os.path.join(params.output_dir, "water_mark.csv")
+            res_dict = {
+                "ImageName": [],
+                "Encoder": [],
+                "Decoder": [],
+                "Match": []
+            }
+
             if not os.path.exists(params.output_dir):
                 os.makedirs(params.output_dir, exist_ok=True)
             imgs_dir = os.path.join(params.output_dir, 'imgs')
@@ -178,10 +189,24 @@ def main(params):
             if not os.path.exists(imgs_dir):
                 os.mkdir(imgs_dir)
             for ii, img_out in enumerate(imgs_out):
-                img_out.save(os.path.join(imgs_dir, '%i_out.png'%ii))
-        
+                save_img_name = 'Img-{}.png'.format(ii+1)
+                img_out.save(os.path.join(imgs_dir, save_img_name))
 
+                # Decode Image
+                decoded_data = decode.decode_multibit([img_out], carrier, model)[0]
+                msg_decoded = decoded_data["msg"]
+                msg_encoded = msgs
+                print("Encode msg: ", msg_encoded)
+                print("Decode msg: ", msg_decoded)
 
+                res_dict["ImageName"].append(save_img_name)
+                res_dict["Encoder"].append(msg_encoded)
+                res_dict["Decoder"].append(msg_decoded)
+                res_dict["Match"].append(msg_encoded == msg_decoded)
+            df = pd.DataFrame(res_dict)
+            df.to_csv(save_csv_dir, index=False)
+
+            
 if __name__ == '__main__':
 
     # generate parser / parse parameters

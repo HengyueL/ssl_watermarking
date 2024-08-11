@@ -21,6 +21,13 @@ import pandas as pd
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+def watermark_np_to_str(watermark_np):
+    """
+        Convert a watermark in np format into a str to display.
+    """
+    return "".join([str(i) for i in watermark_np.tolist()])
+
+
 def get_parser():
     parser = argparse.ArgumentParser()
 
@@ -194,8 +201,8 @@ def main(params):
 
                 # Decode Image
                 decoded_data = decode.decode_multibit([img_out], carrier, model)[0]
-                msg_decoded = decoded_data["msg"]
-                msg_encoded = msgs
+                msg_decoded = watermark_np_to_str(np.where(decoded_data["msg"].cpu().numpy(), 1, 0))
+                msg_encoded = watermark_np_to_str(np.where(msgs.cpu().numpy(), 1, 0))
                 print("Encode msg: ", msg_encoded)
                 print("Decode msg: ", msg_decoded)
 
@@ -206,7 +213,7 @@ def main(params):
             df = pd.DataFrame(res_dict)
             df.to_csv(save_csv_dir, index=False)
 
-            
+
 if __name__ == '__main__':
 
     # generate parser / parse parameters

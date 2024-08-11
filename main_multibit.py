@@ -202,7 +202,7 @@ def main(params):
                 # Decode Image
                 decoded_data = decode.decode_multibit([img_out], carrier, model)[0]
                 msg_decoded = watermark_np_to_str(np.where(decoded_data["msg"].cpu().numpy(), 1, 0))
-                msg_encoded = watermark_np_to_str(np.where(msgs.cpu().numpy(), 1, 0))
+                msg_encoded = watermark_np_to_str(np.where(msgs[ii].cpu().numpy(), 1, 0))
                 print("Encode msg: ", msg_encoded)
                 print("Decode msg: ", msg_decoded)
 

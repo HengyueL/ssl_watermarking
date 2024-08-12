@@ -207,8 +207,8 @@ def main(params):
                 print("Decode msg: ", msg_decoded)
 
                 res_dict["ImageName"].append(save_img_name)
-                res_dict["Encoder"].append(msg_encoded)
-                res_dict["Decoder"].append(msg_decoded)
+                res_dict["Encoder"].append([msg_encoded])
+                res_dict["Decoder"].append([msg_decoded])
                 res_dict["Match"].append(msg_encoded == msg_decoded)
             df = pd.DataFrame(res_dict)
             df.to_csv(save_csv_dir, index=False)

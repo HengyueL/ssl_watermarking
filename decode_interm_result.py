@@ -76,16 +76,28 @@ def main(args):
     ##########################################
 
     # === This is where the interm. results are saved ===
-    data_root_dir = os.path.join("Result-Interm", args.watermarker, args.dataset, args.evade_method, args.arch)
+    data_root_dir = os.path.join(
+        "..", "DIP_Watermark_Evasion",
+        "Result-Interm", args.watermarker, args.dataset, args.evade_method, args.arch
+    )
     file_names = [f for f in os.listdir(data_root_dir) if ".pkl" in f]  # Data are saved as dictionary in pkl format.
 
     # === This is where the watermarked image is stored ===
-    im_w_root_dir = os.path.join("dataset", args.watermarker, args.dataset, "encoder_img")
+    im_w_root_dir = os.path.join(
+        "..", "DIP_Watermark_Evasion",
+        "dataset", args.watermarker, args.dataset, "encoder_img"
+    )
     # === This is where the original clean image is stored ===
-    im_orig_root_dir = os.path.join("dataset", "Clean", args.dataset)
+    im_orig_root_dir = os.path.join(
+        "..", "DIP_Watermark_Evasion",
+        "dataset", "Clean", args.dataset
+    )
 
     # === Save the result in a different location in case something went wrong ===
-    save_root_dir = os.path.join("Result-Decoded", args.watermarker, args.dataset, args.evade_method, args.arch)
+    save_root_dir = os.path.join(
+        "..", "DIP_Watermark_Evasion",
+        "Result-Decoded", args.watermarker, args.dataset, args.evade_method, args.arch
+    )
     os.makedirs(save_root_dir, exist_ok=True)
     
     # === Process each file ===
@@ -248,7 +260,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--watermarker", dest="watermarker", type=str, 
         help="Specification of watermarking method. [rivaGan, dwtDctSvd]",
-        default="dwtDctSvd"
+        default="SSL"
     )
     parser.add_argument(
         "--dataset", dest="dataset", type=str, 

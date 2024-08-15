@@ -19,8 +19,7 @@ from skimage.metrics import peak_signal_noise_ratio as compute_psnr
 import torch
 
 # =====
-from watermarkers import get_watermarkers
-from utils.general import watermark_str_to_numpy, watermark_np_to_str, uint8_to_float, compute_ssim
+from general import watermark_str_to_numpy, watermark_np_to_str, uint8_to_float, compute_ssim
 import decode
 import utils
 
@@ -137,12 +136,6 @@ def main(args):
             watermark_gt_str = data_dict["watermark_gt_str"]
             if watermark_gt_str[0] == "[":  # Some historical none distructive bug :( will cause this reformatting
                 watermark_gt_str = eval(data_dict["watermark_gt_str"])[0]
-            watermark_gt = watermark_str_to_numpy(watermark_gt_str)
-            watermarker_configs = {
-                "watermarker": args.watermarker,
-                "watermark_gt": watermark_gt
-            }
-            watermarker = get_watermarkers(watermarker_configs)
 
             # Process each inter. recon
             watermark_decoded_log = []  # A list to save decoded watermark
@@ -165,7 +158,7 @@ def main(args):
 
                 # Step 1: Decode the interm. result
                 decoded_data = decode.decode_multibit(img_input, carrier, model)[0]["msg"]
-                decoded_data = watermark_np_to_str(decoded_data.cpu().numpy(), 1, 0)
+                decoded_data = watermark_np_to_str(np.where(decoded_data.cpu().numpy(), 1, 0))
                 watermark_decoded_str = decoded_data
 
                 # Step 2: log the result

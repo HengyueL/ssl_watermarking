@@ -50,7 +50,7 @@ def get_parser():
     aa("--num_bits", type=int, default=32, help="Number of bits of the message. (Default: None)")
 
     group = parser.add_argument_group('Marking parameters')
-    aa("--target_psnr", type=float, default=42.0, help="Target PSNR value in dB. (Default: 42 dB)")
+    aa("--target_psnr", type=float, default=33.0, help="Target PSNR value in dB. (Default: 42 dB)")
     aa("--target_fpr", type=float, default=1e-6, help="Target FPR of the dectector. (Default: 1e-6)")
 
     group = parser.add_argument_group('Neural-Network parameters')

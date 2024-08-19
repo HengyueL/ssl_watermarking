@@ -18,6 +18,7 @@ import utils
 import utils_img
 import decode
 import pandas as pd
+from PIL import Image
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -46,7 +47,7 @@ def get_parser():
     group = parser.add_argument_group('Messages parameters')
     aa("--msg_type", type=str, default='bit', choices=['text', 'bit'], help="Type of message (Default: bit)")
     aa("--msg_path", type=str, default=None, help="Path to the messages text file (Default: None)")
-    aa("--num_bits", type=int, default=30, help="Number of bits of the message. (Default: None)")
+    aa("--num_bits", type=int, default=32, help="Number of bits of the message. (Default: None)")
 
     group = parser.add_argument_group('Marking parameters')
     aa("--target_psnr", type=float, default=42.0, help="Target PSNR value in dB. (Default: 42 dB)")
@@ -74,15 +75,25 @@ def main(params):
     torch.manual_seed(0)
     np.random.seed(0)
 
-    # If message file, set num_bits to the maximum number of message payload in the file
-    if params.msg_path is not None:
-        num_bits = utils.get_num_bits(params.msg_path, params.msg_type)
-        if params.num_bits != num_bits:
-            warning_msg = 'WARNING: Number of bits in the loaded message ({a}) does not match the number of bits indicated in the num_bit argument ({b}). \
-                Setting num_bits to {a} \
-                Try with "--num_bit {a}" to remove the warning'.format(a=num_bits, b=params.num_bits)
-            print(warning_msg)
-        params.num_bits = num_bits
+    dataset_dir = os.path.join(
+        "dataset", "Clean"
+    )
+    output_root = os.path.join(
+        "dataset_processed", "SSL"
+    )
+    args = params
+    input_dir = os.path.join(dataset_dir, args.dataset)
+    output_dir = os.path.join(
+        output_root, args.dataset
+    )
+    os.makedirs(output_dir, exist_ok=True)
+    output_img_dir = os.path.join(output_dir, "encoder_img")
+    os.makedirs(output_img_dir, exist_ok=True)
+
+    # === Scan all images in the dataset (clean) ===
+    img_files = [f for f in os.listdir(input_dir) if ".png" in f]
+    print("Total number of images: [{}] --- (Should be 100)".format(len(img_files)))
+
 
     # Loads backbone and normalization layer
     if params.verbose > 0:
@@ -111,113 +122,59 @@ def main(params):
         carrier = utils.generate_carriers(K, D, output_fpath=carrier_path)
     carrier = carrier.to(device, non_blocking=True) # direction vectors of the hyperspace
 
-    # Decode only
-    if params.decode_only:
-        if params.verbose > 0:
-            print('>>> Decoding watermarks...')
-        if not os.path.exists(params.output_dir):
-            os.makedirs(params.output_dir, exist_ok=True)
-        df = evaluate.decode_multibit_from_folder(params.data_dir, carrier, model, params.msg_type)
-        df_path = os.path.join(params.output_dir,'decodings.csv')
-        df.to_csv(df_path, index=False)
-        if params.verbose > 0:
-            print('Results saved in %s'%df_path)
+    msgs = torch.rand([1, params.num_bits])>0.5
+    print("Msg Generated: ", msgs)
+    msg_encoded = watermark_np_to_str(np.where(msgs[0].cpu().numpy(), 1, 0))
+    print("Encode msg: ", msg_encoded)
+    
+    # Construct data augmentation
+    data_aug = data_augmentation.DifferentiableDataAugmentation()
 
-    else: 
-        # Load images
-        if params.verbose > 0:
-            print('>>> Loading images from %s...'%params.data_dir)
-        dataloader = utils_img.get_dataloader(params.data_dir, batch_size=params.batch_size)
+    save_csv_dir = os.path.join(output_dir, "water_mark.csv")
+    res_dict = {
+        "ImageName": [],
+        "Encoder": [],
+        "Decoder": [],
+        "Match": []
+    }
+    
+    # Marking
+    for file_name in img_files:
+        img_path = os.path.join(input_dir, file_name)
+        print('>>> Marking image {}'.format(img_path))
 
-        # Generate messages
-        if params.verbose > 0:
-            print('>>> Loading messages...')
-        if params.msg_path is None:
-            msgs = utils.generate_messages(len(dataloader.dataset), K) # NxK
-        # if a msg_path is given, save/load from it instead
-        else:
-            if not os.path.exists(params.msg_path):
-                if params.verbose > 0:
-                    print('Generating random messages into %s...'%params.msg_path)
-                os.makedirs(os.path.dirname(params.msg_path), exist_ok=True)
-                msgs = utils.generate_messages(len(dataloader.dataset), K) # NxK
-                utils.save_messages(msgs, params.msg_path)
-            else:
-                if params.verbose > 0:
-                    print('Loading %s messages from %s...'%(params.msg_type, params.msg_path))
-                msgs = utils.load_messages(params.msg_path, params.msg_type, len(dataloader.dataset))
-
-        # Construct data augmentation
-        if params.data_augmentation == 'all':
-            data_aug = data_augmentation.All()
-        elif params.data_augmentation == 'none':
-            data_aug = data_augmentation.DifferentiableDataAugmentation()
-
-        # Marking
-        if params.verbose > 0:
-            print('>>> Marking images...')
-        pt_imgs_out = encode.watermark_multibit(dataloader, msgs, carrier, model, data_aug, params)
-        imgs_out = [ToPILImage()(utils_img.unnormalize_img(pt_img).squeeze(0)) for pt_img in pt_imgs_out] 
+        img_pil = Image.open(img_path).convert("RGB")
+        pt_imgs_out = encode.watermark_multibit_single_img(
+            img_pil, msgs, carrier, model, data_aug, params
+        )
         
-        # Evaluate
-        # if params.evaluate:
-        #     if params.verbose > 0:
-        #         print('>>> Evaluating watermarks...')
-        #     if not os.path.exists(params.output_dir):
-        #         os.makedirs(params.output_dir)
-        #     imgs_dir = os.path.join(params.output_dir, 'imgs')
-        #     if not os.path.exists(imgs_dir):
-        #         os.mkdir(imgs_dir)
-        #     df = evaluate.evaluate_multibit_on_attacks(imgs_out, carrier, model, msgs, params)
-        #     df_agg = evaluate.aggregate_df(df, params)
-        #     df_path = os.path.join(params.output_dir,'df.csv')
-        #     df_agg_path = os.path.join(params.output_dir,'df_agg.csv')
-        #     df.to_csv(df_path, index=False)
-        #     df_agg.to_csv(df_agg_path)
-        #     if params.verbose > 0:
-        #         print('Results saved in %s'%df_path)
+        img_out = ToPILImage()(utils_img.unnormalize_img(pt_imgs_out))
+        save_img_name = file_name
+        img_out.save(os.path.join(output_img_dir, save_img_name))
+
+        # Decode Image
+        decoded_data = decode.decode_multibit([img_out], carrier, model)[0]
+        msg_decoded = watermark_np_to_str(np.where(decoded_data["msg"].cpu().numpy(), 1, 0))
         
-        # Save
-        # Init the dict to save watermarking summary
-        if params.save_images:
-            save_csv_dir = os.path.join(params.output_dir, "water_mark.csv")
-            res_dict = {
-                "ImageName": [],
-                "Encoder": [],
-                "Decoder": [],
-                "Match": []
-            }
+        print("Decode msg: ", msg_decoded)
 
-            if not os.path.exists(params.output_dir):
-                os.makedirs(params.output_dir, exist_ok=True)
-            imgs_dir = os.path.join(params.output_dir, 'imgs')
-            if params.verbose > 0:
-                print('>>> Saving images into %s...'%imgs_dir)
-            if not os.path.exists(imgs_dir):
-                os.mkdir(imgs_dir)
-            for ii, img_out in enumerate(imgs_out):
-                save_img_name = 'Img-{}.png'.format(ii+1)
-                img_out.save(os.path.join(imgs_dir, save_img_name))
+        res_dict["ImageName"].append(file_name)
+        res_dict["Encoder"].append([msg_encoded])
+        res_dict["Decoder"].append([msg_decoded])
+        res_dict["Match"].append(msg_encoded == msg_decoded)
 
-                # Decode Image
-                decoded_data = decode.decode_multibit([img_out], carrier, model)[0]
-                msg_decoded = watermark_np_to_str(np.where(decoded_data["msg"].cpu().numpy(), 1, 0))
-                msg_encoded = watermark_np_to_str(np.where(msgs[ii].cpu().numpy(), 1, 0))
-                print("Encode msg: ", msg_encoded)
-                print("Decode msg: ", msg_decoded)
-
-                res_dict["ImageName"].append(save_img_name)
-                res_dict["Encoder"].append([msg_encoded])
-                res_dict["Decoder"].append([msg_decoded])
-                res_dict["Match"].append(msg_encoded == msg_decoded)
-            df = pd.DataFrame(res_dict)
-            df.to_csv(save_csv_dir, index=False)
+    df = pd.DataFrame(res_dict)
+    df.to_csv(save_csv_dir, index=False)
 
 
 if __name__ == '__main__':
 
     # generate parser / parse parameters
     parser = get_parser()
+    parser.add_argument(
+        "--dataset", dest="dataset", type=str,
+        default="COCO"
+    )
     params = parser.parse_args()
 
     # run experiment

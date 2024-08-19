@@ -9,7 +9,7 @@ import json
 import numpy as np
 import torch
 from tqdm import tqdm
-
+from torchvision import transforms
 import utils
 import utils_img
 
@@ -233,7 +233,7 @@ def watermark_multibit(img_loader, msgs, carrier, model, transform, params):
     return pt_imgs_out # [CxW1xH1, ..., CxWnxHn] 
 
 
-def watermark_multibit_single_img(img, msg_np, carrier, model, transform, params):
+def watermark_multibit_single_img(img, msg_tensor, carrier, model, transform, params):
     """
     multi-bit watermarking of a batch of images.
 
@@ -258,24 +258,25 @@ def watermark_multibit_single_img(img, msg_np, carrier, model, transform, params
 
     # load images
     # img is a pil img read
+    img_tensor = default_transform(img)
 
-    img_tensor = img.to(device).unsqueeze(0)
+    img_tensor = img_tensor.to(device, non_blocking=True).unsqueeze(0)
     batch_img = img_tensor.clone()
-    batch_img.require.requires_grad = True
+    batch_img.requires_grad = True
 
-    batch_msgs = torch.from_numpy(msg_np).unsqueeze(0).to(device, non_blocking=True)
-    optimizer = build_optimizer(model_params=batch_img, **utils.parse_params(params.optimizer))
+    batch_msgs = msg_tensor.to(device, non_blocking=True)
+    optimizer = build_optimizer(model_params=[batch_img], **utils.parse_params(params.optimizer))
     if params.scheduler is not None:
         scheduler = build_lr_scheduler(optimizer=optimizer, **utils.parse_params(params.scheduler))
 
     # optimization
     for iteration in range(params.epochs):
         # Constraints and data augmentations
-        batch_img = ssim.apply(batch_img, img_tensor)
-        batch_img = utils_img.psnr_clip(batch_img, img_tensor, params.target_psnr)
-        aug_params = transform.sample_params(batch_img)
-        aug_img = transform(batch_img, aug_params)
-        batch = aug_img
+        x = ssim.apply(batch_img[0], img_tensor[0])
+        x = utils_img.psnr_clip(x, img_tensor[0], params.target_psnr)
+        aug_params = transform.sample_params(x)
+        aug_img = transform(x, aug_params)
+        batch = aug_img.unsqueeze(0)
         # get features
         ft = model(batch) # BxCxWxH -> BxD
         # compute losses
